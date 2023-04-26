@@ -115,9 +115,11 @@ int main(int argc, char *argv[])
 	MAIN_ALLOC(rem_dest, struct pingpong_dest, user_param.num_of_qps, free_my_dest);
 	memset(rem_dest, 0, sizeof(struct pingpong_dest)*user_param.num_of_qps);
 
-	
+	int port_base = user_param.port;
 	for (i = 0; i < user_param.num_of_qps; i++) {
-		user_param.servername = servername_list[i];
+		user_param.servername = servername_list[i];		
+		user_param.port = port_base + i;
+
 		printf("%s\n", user_param.servername);
 		/* copy the relevant user parameters to the comm struct + creating rdma_cm resources. */
 		if (create_comm_struct(&user_comm[i],&user_param)) {
@@ -141,7 +143,7 @@ int main(int argc, char *argv[])
 			fprintf(stderr, " Couldn't get context for the device\n");
 			dealloc_comm_struct(&user_comm[i],&user_param);
 			return FAILURE;
-		}
+		}		
 	}
 
 	if (user_param.output == FULL_VERBOSITY && user_param.machine == SERVER) {
