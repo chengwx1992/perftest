@@ -3158,12 +3158,8 @@ int parser(struct perftest_parameters *user_param,char *argv[], int argc)
 		user_param->print_eth_func = &print_ethernet_vlan_header;
 		vlan_en = 0;
 	}
-	if (optind == argc - 1) {
+	if (optind < argc) {
 		GET_STRING(user_param->servername,strdupa(argv[optind]));
-
-	} else if (optind < argc) {
-		fprintf(stderr," Invalid Command line. Please check command rerun \n");
-		return 1;
 	}
 
 	if(user_param->connection_type != RawEth)
