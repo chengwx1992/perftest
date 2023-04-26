@@ -3559,6 +3559,7 @@ int run_iter_bw_server(struct pingpong_context *ctx, struct perftest_parameters 
 	uintptr_t		primary_recv_addr = ctx->recv_sge_list[0].addr;
 	int			recv_flows_burst = 0;
 	int			address_flows_offset =0;
+	uint64_t	chunk_iters;
 
 	#ifdef HAVE_IBV_WR_API
 	if (user_param->connection_type != RawEth)
@@ -3593,7 +3594,7 @@ int run_iter_bw_server(struct pingpong_context *ctx, struct perftest_parameters 
 	}
 
 	check_alive_data.g_total_iters = tot_iters;
-
+	chunk_iters = user_param->tx_depth;
 	while (rcnt < tot_iters || (user_param->test_type == DURATION && user_param->state != END_STATE)) {
 
 		if (user_param->use_event) {
@@ -3635,83 +3636,6 @@ int run_iter_bw_server(struct pingpong_context *ctx, struct perftest_parameters 
 						}
 						user_param->iters++;
 					}
-					//coverity[uninit_use]
-					if ((user_param->test_type==DURATION || posted_per_qp[wc_id] + user_param->recv_post_list <= user_param->iters) &&
-							unused_recv_for_qp[wc_id] >= user_param->recv_post_list) {
-						if (user_param->use_srq) {
-							if (ibv_post_srq_recv(ctx->srq, &ctx->rwr[wc_id * user_param->recv_post_list], &bad_wr_recv)) {
-								fprintf(stderr, "Couldn't post recv SRQ. QP = %d: counter=%lu\n", wc_id,rcnt);
-								return_value = FAILURE;
-								goto cleaning;
-							}
-
-						} else {
-							if (ibv_post_recv(ctx->qp[wc_id], &ctx->rwr[wc_id * user_param->recv_post_list], &bad_wr_recv)) {
-								fprintf(stderr, "Couldn't post recv Qp=%d rcnt=%lu\n",wc_id,rcnt_for_qp[wc_id]);
-								return_value = 15;
-								goto cleaning;
-							}
-						}
-						unused_recv_for_qp[wc_id] -= user_param->recv_post_list;
-						posted_per_qp[wc_id] += user_param->recv_post_list;
-
-						if (user_param->flows != DEF_FLOWS) {
-							if (++recv_flows_burst == user_param->flows_burst) {
-								recv_flows_burst = 0;
-								if (++recv_flows_index == user_param->flows)
-									recv_flows_index = 0;
-								address_flows_offset = recv_flows_index * ctx->cycle_buffer;
-								ctx->recv_sge_list[0].addr = primary_recv_addr + address_flows_offset;
-							}
-						}
-						if (SIZE(user_param->connection_type,user_param->size,!(int)user_param->machine) <= (ctx->cycle_buffer / 2) &&
-								user_param->recv_post_list == 1) {
-							increase_loc_addr(ctx->rwr[wc_id].sg_list,
-									user_param->size,
-									posted_per_qp[wc_id],
-									ctx->rx_buffer_addr[wc_id] + address_flows_offset,
-									user_param->connection_type,ctx->cache_line_size,ctx->cycle_buffer);
-						}
-					}
-
-					if (ctx->send_rcredit) {
-						int credit_cnt = rcnt_for_qp[wc_id]%user_param->rx_depth;
-
-						if (credit_cnt%ctx->credit_cnt == 0) {
-							struct ibv_send_wr *bad_wr = NULL;
-							int sne = 0, j = 0;
-							ctx->ctrl_buf[wc_id] = rcnt_for_qp[wc_id];
-
-							while (scredit_for_qp[wc_id] == user_param->tx_depth) {
-								sne = ibv_poll_cq(ctx->send_cq,user_param->tx_depth,swc);
-								if (sne > 0) {
-									for (j = 0; j < sne; j++) {
-										if (swc[j].status != IBV_WC_SUCCESS) {
-											fprintf(stderr, "Poll send CQ error status=%u qp %d credit=%lu scredit=%ld\n",
-													swc[j].status,(int)swc[j].wr_id,
-													rcnt_for_qp[swc[j].wr_id],scredit_for_qp[swc[j].wr_id]);
-											return_value = FAILURE;
-											goto cleaning;
-										}
-										scredit_for_qp[swc[j].wr_id]--;
-										tot_scredit--;
-									}
-								} else if (sne < 0) {
-									fprintf(stderr, "Poll send CQ failed ne=%d\n",sne);
-									return_value = FAILURE;
-									goto cleaning;
-								}
-							}
-							if (ibv_post_send(ctx->qp[wc_id],&ctx->ctrl_wr[wc_id],&bad_wr)) {
-								fprintf(stderr,"Couldn't post send qp %d credit = %lu\n",
-										wc_id,rcnt_for_qp[wc_id]);
-								return_value = FAILURE;
-								goto cleaning;
-							}
-							scredit_for_qp[wc_id]++;
-							tot_scredit++;
-						}
-					}
 				}
 			}
 
@@ -3730,6 +3654,55 @@ int run_iter_bw_server(struct pingpong_context *ctx, struct perftest_parameters 
 			}
 		}
 
+		bool generate_recv = true;
+		if(user_param->tx_depth <= 8) {
+			for(wc_id = 0; wc_id < user_param->num_of_qps; wc_id++) {
+				generate_recv &= (rcnt_for_qp[wc_id] >= chunk_iters);
+			}
+		}
+		if(generate_recv) {
+			for(wc_id = 0; wc_id < user_param->num_of_qps; wc_id++) {
+				//coverity[uninit_use]
+				while ((user_param->test_type==DURATION || posted_per_qp[wc_id] + user_param->recv_post_list <= user_param->iters) &&
+						unused_recv_for_qp[wc_id] >= user_param->recv_post_list) {
+					if (user_param->use_srq) {
+						if (ibv_post_srq_recv(ctx->srq, &ctx->rwr[wc_id * user_param->recv_post_list], &bad_wr_recv)) {
+							fprintf(stderr, "Couldn't post recv SRQ. QP = %d: counter=%lu\n", wc_id,rcnt);
+							return_value = FAILURE;
+							goto cleaning;
+						}
+
+					} else {
+						if (ibv_post_recv(ctx->qp[wc_id], &ctx->rwr[wc_id * user_param->recv_post_list], &bad_wr_recv)) {
+							fprintf(stderr, "Couldn't post recv Qp=%d rcnt=%lu\n",wc_id,rcnt_for_qp[wc_id]);
+							return_value = 15;
+							goto cleaning;
+						}
+					}
+					unused_recv_for_qp[wc_id] -= user_param->recv_post_list;
+					posted_per_qp[wc_id] += user_param->recv_post_list;
+
+					if (user_param->flows != DEF_FLOWS) {
+						if (++recv_flows_burst == user_param->flows_burst) {
+							recv_flows_burst = 0;
+							if (++recv_flows_index == user_param->flows)
+								recv_flows_index = 0;
+							address_flows_offset = recv_flows_index * ctx->cycle_buffer;
+							ctx->recv_sge_list[0].addr = primary_recv_addr + address_flows_offset;
+						}
+					}
+					if (SIZE(user_param->connection_type,user_param->size,!(int)user_param->machine) <= (ctx->cycle_buffer / 2) &&
+							user_param->recv_post_list == 1) {
+						increase_loc_addr(ctx->rwr[wc_id].sg_list,
+								user_param->size,
+								posted_per_qp[wc_id],
+								ctx->rx_buffer_addr[wc_id] + address_flows_offset,
+								user_param->connection_type,ctx->cache_line_size,ctx->cycle_buffer);
+					}
+				}
+			}
+			chunk_iters += user_param->tx_depth;
+		}
 	}
 	if (user_param->test_type == ITERATIONS)
 		user_param->tcompleted[0] = get_cycles();
