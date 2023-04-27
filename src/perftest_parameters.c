@@ -3514,14 +3514,17 @@ void print_report_bw (struct perftest_parameters *user_param, struct bw_report_d
 	run_inf_bi_factor = (user_param->duplex && user_param->test_method == RUN_INFINITELY) ? (user_param->verb == SEND ? 1 : 2) : 1 ;
 	tsize = run_inf_bi_factor * user_param->size;
 	num_of_calculated_iters *= (user_param->test_type == DURATION) ? 1 : num_of_qps;
-	location_arr = (user_param->noPeak) ? 0 : num_of_calculated_iters - 1;
 	/* support in GBS format */
 	format_factor = (user_param->report_fmt == MBS) ? 0x100000 : 125000000;
+	int location_count = (user_param->noPeak) ? num_of_calculated_iters : ((int)(1<<25) / user_param->size);	
+	location_arr = (user_param->noPeak) ? 0 : location_count - 1;
+	cycles_t last_count_cycle = user_param->tposted[0];
+	for(; location_arr<num_of_calculated_iters; location_arr+=location_count) {
+	sum_of_test_cycles = ((double)(user_param->tcompleted[location_arr] - last_count_cycle));
+	last_count_cycle = user_param->tcompleted[location_arr];
 
-	sum_of_test_cycles = ((double)(user_param->tcompleted[location_arr] - user_param->tposted[0]));
-
-	double bw_avg = ((double)tsize*num_of_calculated_iters * cycles_to_units) / (sum_of_test_cycles * format_factor);
-	double msgRate_avg = ((double)num_of_calculated_iters * cycles_to_units * run_inf_bi_factor) / (sum_of_test_cycles * 1000000);
+	double bw_avg = ((double)tsize*location_count * cycles_to_units) / (sum_of_test_cycles * format_factor);
+	double msgRate_avg = ((double)location_count * cycles_to_units * run_inf_bi_factor) / (sum_of_test_cycles * 1000000);
 
 	double bw_avg_p1 = ((double)tsize*user_param->iters_per_port[0] * cycles_to_units) / (sum_of_test_cycles * format_factor);
 	double msgRate_avg_p1 = ((double)user_param->iters_per_port[0] * cycles_to_units * run_inf_bi_factor) / (sum_of_test_cycles * 1000000);
@@ -3538,9 +3541,11 @@ void print_report_bw (struct perftest_parameters *user_param, struct bw_report_d
 		memset(my_bw_rep, 0, sizeof(struct bw_report_data));
 	}
 
+	
+	sum_of_test_cycles = ((double)(user_param->tcompleted[location_arr] - user_param->tposted[0]));
 	my_bw_rep->size = (unsigned long)user_param->size;
-	my_bw_rep->iters = num_of_calculated_iters;
-	my_bw_rep->bw_peak = (double)peak_up/peak_down;
+	my_bw_rep->iters = location_count;
+	my_bw_rep->bw_peak = sum_of_test_cycles * 1000 / cycles_to_units;
 	my_bw_rep->bw_avg = bw_avg;
 	my_bw_rep->msgRate_avg = msgRate_avg;
 	my_bw_rep->bw_avg_p1 = bw_avg_p1;
@@ -3552,7 +3557,7 @@ void print_report_bw (struct perftest_parameters *user_param, struct bw_report_d
 	if (!user_param->duplex || (user_param->verb == SEND && user_param->test_type == DURATION)
 			|| user_param->test_method == RUN_INFINITELY || user_param->connection_type == RawEth)
 		print_full_bw_report(user_param, my_bw_rep, NULL);
-
+	}
 	if (free_my_bw_rep == 1) {
 		free(my_bw_rep);
 	}
