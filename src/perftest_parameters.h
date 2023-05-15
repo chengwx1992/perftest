@@ -195,7 +195,7 @@
 
 #define RESULT_FMT_PER_PORT	" #bytes     #iterations    BW peak[MB/sec]    BW average[MB/sec]   MsgRate[Mpps]   BW Port1[MB/sec]   MsgRate Port1[Mpps]   BW Port2[MB/sec]   MsgRate Port2[Mpps]"
 
-#define RESULT_FMT_G	" #bytes     #iterations    BW peak[Gb/sec]    BW average[Gb/sec]   MsgRate[Mpps]"
+#define RESULT_FMT_G	" #bytes     #iterations    Time[sec]    BW average[Gb/sec]"
 
 #define RESULT_FMT_G_PER_PORT	" #bytes     #iterations    BW peak[Gb/sec]    BW average[Gb/sec]   MsgRate[Mpps]   BW Port1[Gb/sec]   MsgRate Port1[Mpps]   BW Port2[Gb/sec]   MsgRate Port2[Mpps]"
 
@@ -216,7 +216,7 @@
 #define RESULT_FMT_FS_RATE_DUR " #flows		fs_avg_time[usec]    	fps[flow per sec]"
 
 /* Result print format */
-#define REPORT_FMT " %-7lu    %-10" PRIu64 "       %-7.2lf            %-7.2lf		   %-7.6lf"
+#define REPORT_FMT " %-7lu    %-10" PRIu64 "       %-7.3lf            %-7.3lf"
 
 #define REPORT_FMT_JSON "MsgSize: %lu,\nn_iterations: %" PRIu64 ",\nBW_peak: %.2lf,\nBW_average: %.2lf,\nMsgRate: %.6lf,\n"
 

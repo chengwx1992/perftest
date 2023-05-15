@@ -41,6 +41,9 @@ static enum ibv_wr_opcode opcode_atomic_array[] = {IBV_WR_ATOMIC_CMP_AND_SWP,IBV
 struct perftest_parameters* duration_param;
 struct check_alive_data check_alive_data;
 
+cycles_t start_cycles;
+double cycles_to_units;
+long format_factor;
 /******************************************************************************
  * Beginning
  ******************************************************************************/
@@ -3795,6 +3798,13 @@ int run_iter_bw_infinitely(struct pingpong_context *ctx,struct perftest_paramete
 
 	duration_param=user_param;
 
+	cycles_to_units = get_cpu_mhz(user_param->cpu_freq_f) * 1000000; //to ms
+	format_factor = (user_param->report_fmt == MBS) ? 0x100000 : 125000000;
+	start_cycles = get_cycles();
+
+	user_param->iters = 0;
+	user_param->last_iters = 0;
+
 	pthread_t print_thread;
 	if (pthread_create(&print_thread, NULL, &handle_signal_print_thread,(void*)&user_param->duration) != 0){
 		printf("Fail to create thread \n");
@@ -3802,9 +3812,6 @@ int run_iter_bw_infinitely(struct pingpong_context *ctx,struct perftest_paramete
 		free(scnt_for_qp);
 		return FAILURE;
 	}
-
-	user_param->iters = 0;
-	user_param->last_iters = 0;
 
 	/* Will be 0, in case of Duration (look at force_dependencies or in the exp above) */
 	if (user_param->duplex && (user_param->use_xrc || user_param->connection_type == DC))
@@ -5032,9 +5039,19 @@ void check_alive(int sig)
  ******************************************************************************/
 void print_bw_infinite_mode()
 {
-	print_report_bw(duration_param,NULL);
+	cycles_t current_cycles = get_cycles();
+	uint64_t num_of_calculated_iters = duration_param->iters - duration_param->last_iters;
+	double sum_of_test_cycles = ((double)(current_cycles - duration_param->tposted[0]));
+
 	duration_param->last_iters = duration_param->iters;
 	duration_param->tposted[0] = get_cycles();
+	duration_param->tposted[0] = current_cycles;
+
+	double sum_of_total_time = ((double)(current_cycles - start_cycles)) / cycles_to_units;
+	double bw_avg = ((double)duration_param->size*num_of_calculated_iters * cycles_to_units) / (sum_of_test_cycles * format_factor);
+
+	printf(REPORT_FMT, duration_param->size, num_of_calculated_iters, sum_of_total_time, bw_avg);
+	printf(REPORT_EXT);
 }
 
 /******************************************************************************
@@ -5044,7 +5061,7 @@ void *handle_signal_print_thread(void* duration)
 {
 	int* duration_p = (int*) duration;
 	while(1){
-		sleep(*duration_p);
+		usleep(10000);
 		print_bw_infinite_mode();
 	}
 
