@@ -3516,7 +3516,7 @@ void print_report_bw (struct perftest_parameters *user_param, struct bw_report_d
 	location_arr = (user_param->noPeak) ? 0 : num_of_calculated_iters - 1;
 	/* support in GBS format */
 	format_factor = (user_param->report_fmt == MBS) ? 0x100000 : 125000000;
-	int location_count = (int)((1 << 22) / user_param->size);
+	int location_count = (int)((1 << 24) / user_param->size);
 	cycles_t last_count_cycles = user_param->tposted[0];
 	for (location_arr = location_count - 1; location_arr < num_of_calculated_iters; location_arr += location_count) {
 	sum_of_test_cycles = ((double)(user_param->tcompleted[location_arr] - last_count_cycles));
